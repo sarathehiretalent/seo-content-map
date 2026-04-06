@@ -1,0 +1,292 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Cache Layer ────────────────────────────
+
+model ApiCache {
+  id        String   @id @default(uuid())
+  cacheKey  String   @unique
+  endpoint  String
+  response  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─── Auth ───────────────────────────────────
+
+model GoogleToken {
+  id           String   @id @default(uuid())
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Multi-Brand ────────────────────────────
+
+model Brand {
+  id          String   @id @default(uuid())
+  name        String
+  domain      String
+  gscProperty String?
+  vertical    String?
+  description String?
+  // Brand Intelligence (AI-generated, editable)
+  coreProducts       String?  // What the brand sells/does
+  notBrand           String?  // What the brand is NOT (similar names, unrelated topics)
+  targetAudience     String?  // Who they serve
+  competitors        String?  // Direct competitors
+  contentTopics      String?  // Topics the site covers (JSON string[])
+  sitePages          String?  // Key pages with descriptions (JSON)
+  brandIntelligence  String?  // Full AI-generated brand profile
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  keywords       Keyword[]
+  diagnostics    Diagnostic[]
+  contentMaps    ContentMap[]
+  serpSnapshots   SerpSnapshot[]
+  serpAnalyses    SerpAnalysis[]
+  pageAudits     PageAudit[]
+  aoeStrategies  AoeStrategy[]
+}
+
+// ─── Page Audit (Optimize section) ──────────
+
+model PageAudit {
+  id              String   @id @default(uuid())
+  brandId         String
+  status          String   @default("pending")
+  pipelineLog     String   @default("[]")
+  auditData       String?  // JSON: PageAuditData[]
+  quickWins       String?  // JSON: QuickWin[]
+  recommendations String?  // JSON: Recommendation[]
+  summary         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+// ─── SERP Analysis (independent from diagnostic) ──
+
+model SerpAnalysis {
+  id              String   @id @default(uuid())
+  brandId         String
+  status          String   @default("pending")
+  pipelineLog     String   @default("[]")
+  // Results stored as JSON
+  serpPerformance String?  // Our top keywords with SERP feature ownership
+  competitorGap   String?  // Keywords competitors rank for, we don't (ICP filtered)
+  icpAlignment    String?  // Our keywords classified by ICP alignment
+  opportunities   String?  // Prioritized action items
+  summary         String?  // AI summary
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+// ─── Diagnostic (Fase 1) ───────────────────
+
+model Diagnostic {
+  id               String   @id @default(uuid())
+  brandId          String
+  name             String
+  status           String   @default("pending")
+  pipelineLog      String   @default("[]")
+  currentStructure String?
+  gaps             String?
+  cannibalization  String?
+  summary          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+// ─── Keywords ───────────────────────────────
+
+model Keyword {
+  id               String   @id @default(uuid())
+  brandId          String
+  query            String
+  clicks           Int      @default(0)
+  impressions      Int      @default(0)
+  ctr              Float    @default(0)
+  position         Float    @default(0)
+  pageUrl          String?
+  searchVolume     Int?
+  kd               Int?
+  cpc              Float?
+  competition      Float?
+  competitionLevel String?
+  intent           String?
+  serpFeatures     String?
+  source           String   @default("gsc")
+  createdAt        DateTime @default(now())
+
+  brand         Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentPieces ContentPiece[]
+  serpResults    SerpResult[]
+
+  @@unique([brandId, query])
+}
+
+// ─── SERP Analysis ──────────────────────────
+
+model SerpSnapshot {
+  id        String       @id @default(uuid())
+  brandId   String
+  name      String
+  createdAt DateTime     @default(now())
+  results   SerpResult[]
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+model SerpResult {
+  id                  String   @id @default(uuid())
+  snapshotId          String
+  keywordId           String?
+  hasFeaturedSnippet  Boolean  @default(false)
+  ownsFeaturedSnippet Boolean  @default(false)
+  hasPaa              Boolean  @default(false)
+  paaQuestions        String   @default("[]")
+  hasKnowledgePanel   Boolean  @default(false)
+  hasVideoResults     Boolean  @default(false)
+  hasLocalPack        Boolean  @default(false)
+  hasImagePack        Boolean  @default(false)
+  hasSitelinks        Boolean  @default(false)
+  hasAiOverview       Boolean  @default(false)
+  topCompetitors      String   @default("[]")
+  serpFeaturesList     String   @default("[]")
+  rawResponse         String?
+  createdAt           DateTime @default(now())
+
+  snapshot SerpSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  keyword  Keyword?     @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+}
+
+// ─── Content Map ────────────────────────────
+
+model ContentMap {
+  id           String   @id @default(uuid())
+  brandId      String
+  diagnosticId String?
+  name         String
+  quarter      String?  // e.g. "Q2 2026"
+  status       String   @default("pending")
+  pipelineLog  String   @default("[]")
+  // Content map data (JSON)
+  keywordPool  String?  // Keyword pool JSON — saved for reuse
+  mapData      String?  // Full content map pieces JSON
+  briefs       String?  // Content briefs JSON
+  reviewResult String?  // Quality review JSON
+  summary      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  brand             Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentPieces     ContentPiece[]
+  pageOptimizations PageOptimization[]
+}
+
+model ContentPiece {
+  id               String   @id @default(uuid())
+  contentMapId     String
+  keywordId        String?
+  pillarName       String
+  pillarKeyword    String
+  clusterName      String
+  clusterKeyword   String
+  intent           String
+  contentType      String
+  category         String
+  kd               Int?
+  competition      String?
+  cpc              Float?
+  searchVolume     Int?
+  title            String
+  description      String
+  reasoning        String
+  paaQuestions     String   @default("[]")
+  serpElements     String   @default("[]")
+  opportunityScore Float    @default(0)
+  priority         String   @default("medium")
+  status           String   @default("not_started")
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  contentMap ContentMap @relation(fields: [contentMapId], references: [id], onDelete: Cascade)
+  keyword    Keyword?   @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+}
+
+// ─── AOE Strategy ───────────────────────────
+
+model AoeStrategy {
+  id        String            @id @default(uuid())
+  brandId   String
+  name      String
+  month     Int
+  year      Int
+  summary   String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  items     AoeStrategyItem[]
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+model AoeStrategyItem {
+  id                 String   @id @default(uuid())
+  strategyId         String
+  targetQuery        String
+  targetEngine       String
+  currentPresence    String   @default("none")
+  currentSnippet     String?
+  recommendedContent String
+  contentFormat      String
+  optimizationTips   String   @default("[]")
+  estimatedImpact    String   @default("medium")
+  priority           String   @default("medium")
+  status             String   @default("not_started")
+  createdAt          DateTime @default(now())
+
+  strategy AoeStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+}
+
+// ─── Page Optimization ──────────────────────
+
+model PageOptimization {
+  id                   String   @id @default(uuid())
+  contentMapId         String
+  pageUrl              String
+  pageTitle            String?
+  primaryKeyword       String
+  relatedKeywords      String   @default("[]")
+  currentPosition      Float
+  currentClicks        Int      @default(0)
+  currentImpressions   Int      @default(0)
+  currentCtr           Float    @default(0)
+  potentialPosition    Float?
+  potentialTrafficGain Int?
+  issueType            String
+  diagnosis            String
+  recommendations      String   @default("[]")
+  reasoning            String
+  difficulty           String   @default("medium")
+  impact               String   @default("medium")
+  isQuickWin           Boolean  @default(false)
+  priority             String   @default("medium")
+  status               String   @default("not_started")
+  createdAt            DateTime @default(now())
+
+  contentMap ContentMap @relation(fields: [contentMapId], references: [id], onDelete: Cascade)
+}
