@@ -37,6 +37,9 @@ yarn-error.log*
 *.db
 *.db-journal
 
+# claude
+.claude/
+
 # vercel
 .vercel
 
