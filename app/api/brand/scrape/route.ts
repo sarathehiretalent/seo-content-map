@@ -33,7 +33,7 @@ Provide a comprehensive report covering:
 
 1. CORE PRODUCTS & SERVICES: What exactly does this company sell? Features, how it works, pricing model.
 
-2. BRAND CONFUSION: Find OTHER companies with similar names. For example "Integrity Staffing Solutions" vs "IntegrityFirst Tests" are completely different. List all potential confusions.
+2. BRAND CONFUSION: Find OTHER companies with similar names that could be confused with this brand. List all potential confusions.
 
 3. DIRECT COMPETITORS: Find companies in the USA that sell the SAME type of product. For each:
    - Company name and website URL

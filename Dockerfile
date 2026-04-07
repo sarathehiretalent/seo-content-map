@@ -33,16 +33,23 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+# Copy seed database (used only if no DB exists in the volume)
+COPY --from=builder /app/prisma/dev.db ./prisma-seed/dev.db
+
+# Copy entrypoint
+COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+# Create prisma dir for volume mount and ensure permissions
+RUN mkdir -p /app/prisma && chown nextjs:nodejs /app/prisma /app/prisma-seed
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["./docker-entrypoint.sh"]

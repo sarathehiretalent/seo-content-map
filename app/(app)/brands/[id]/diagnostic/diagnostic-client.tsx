@@ -32,7 +32,7 @@ export function DiagnosticClient({ brand }: { brand: Brand }) {
 
   const lastCompleted = brand.diagnostics.find((d) => d.status === 'completed')
 
-  const hasBrandContext = !!(brand.description && brand.description.length > 20)
+  const hasBrandContext = !!((brand.description && brand.description.length > 20) || brand.brandIntelligence || brand.coreProducts) // Use lib/brand-ready.ts for new components
 
   async function handleRunDiagnostic() {
     if (!hasBrandContext) {
