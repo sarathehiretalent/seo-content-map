@@ -38,8 +38,9 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 
-# Copy seed database (used only if no DB exists in the volume)
-COPY --from=builder /app/prisma/dev.db ./prisma-seed/dev.db
+# Copy seed database if it exists (used only if no DB exists in the volume)
+RUN mkdir -p /app/prisma-seed
+COPY --from=builder /app/prisma/dev.d[b] ./prisma-seed/
 
 # Copy entrypoint
 COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./docker-entrypoint.sh
