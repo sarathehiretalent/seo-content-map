@@ -17,6 +17,7 @@ interface Brand {
   targetAudience: string | null
   competitors: string | null
   brandIntelligence: string | null
+  targetKeywords: string | null
 }
 
 export function SettingsClient({ brand, hasGoogleToken }: { brand: Brand; hasGoogleToken: boolean }) {
@@ -35,6 +36,7 @@ export function SettingsClient({ brand, hasGoogleToken }: { brand: Brand; hasGoo
   const [targetAudience, setTargetAudience] = useState(brand.targetAudience ?? '')
   const [competitors, setCompetitors] = useState(brand.competitors ?? '')
   const [brandIntelligence, setBrandIntelligence] = useState(brand.brandIntelligence ?? '')
+  const [targetKeywords, setTargetKeywords] = useState(brand.targetKeywords ?? '')
 
   const hasIntelligence = !!(brand.coreProducts && brand.notBrand)
 
@@ -96,6 +98,7 @@ export function SettingsClient({ brand, hasGoogleToken }: { brand: Brand; hasGoo
     formData.set('targetAudience', targetAudience)
     formData.set('competitors', competitors)
     formData.set('brandIntelligence', brandIntelligence)
+    formData.set('targetKeywords', targetKeywords)
     formData.set('gscProperty', selectedProperty)
     await updateBrand(brand.id, formData)
     setSaving(false)
@@ -194,6 +197,17 @@ export function SettingsClient({ brand, hasGoogleToken }: { brand: Brand; hasGoo
             <textarea value={competitors} onChange={(e) => setCompetitors(e.target.value)} rows={4}
               placeholder="https://competitor.com — Description of why they compete..."
               className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-brand mb-1">
+              Target Keywords
+              <span className="ml-1 text-[10px] opacity-60">Keywords your business wants to rank for — one per line</span>
+            </label>
+            <textarea value={targetKeywords} onChange={(e) => setTargetKeywords(e.target.value)} rows={4}
+              placeholder={"your main product keyword\nproduct category keyword\nbuyer problem keyword\ncomparison keyword"}
+              className="w-full rounded-lg border border-brand/30 bg-input px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
+            <p className="mt-1 text-[10px] text-muted-foreground">These keywords will be prioritized in Content Map generation and tracked in Performance. Enter the keywords that matter most for your business revenue.</p>
           </div>
 
           <div>

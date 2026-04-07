@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Zap, Search, FileText, ChevronDown, ChevronRight, Stethoscope, AlertTriangle, CheckCircle2, Gauge } from 'lucide-react'
+import { Zap, Search, FileText, ChevronDown, ChevronRight, Stethoscope, AlertTriangle, CheckCircle2, Copy } from 'lucide-react'
 import { AnalysisProgress } from '@/components/analysis/analysis-progress'
-import { SpeedClient } from './speed-client'
 
 interface QuickWin {
   url: string
@@ -39,7 +38,7 @@ interface Audit {
   recommendations: string | null; summary: string | null; createdAt: string | Date
 }
 
-type Tab = 'quickwins' | 'audit' | 'recommendations' | 'speed'
+type Tab = 'quickwins' | 'audit' | 'recommendations' | 'cannibalization'
 
 const icpBadge = (alignment: string | undefined) => {
   if (!alignment || alignment === 'unknown') return null
@@ -77,7 +76,9 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
   const auditQuickWins: QuickWin[] = latestAudit?.quickWins ? JSON.parse(latestAudit.quickWins) : []
   const quickWins = auditQuickWins.length > 0 ? auditQuickWins : serverQuickWins
   const auditData: AuditItem[] = latestAudit?.auditData ? JSON.parse(latestAudit.auditData) : []
-  const allFixes: PageFix[] = latestAudit?.recommendations ? JSON.parse(latestAudit.recommendations) : []
+  const allFixesRaw: PageFix[] = latestAudit?.recommendations ? JSON.parse(latestAudit.recommendations) : []
+  const cannibalizationFixes = allFixesRaw.filter((f) => f.type === 'cannibalization')
+  const allFixes = allFixesRaw.filter((f) => f.type !== 'cannibalization')
   const summary = latestAudit?.summary ?? null
   const hasAudit = latestAudit?.status === 'completed' && auditData.length > 0
 
@@ -172,9 +173,11 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
         <button onClick={() => setTab('recommendations')} className={`flex items-center gap-1.5 px-3 py-1.5 font-medium ${tab === 'recommendations' ? 'bg-brand text-primary-foreground' : 'hover:bg-surface-2'}`}>
           <CheckCircle2 className="h-3 w-3" />Fixes ({allFixes.length})
         </button>
-        <button onClick={() => setTab('speed')} className={`flex items-center gap-1.5 px-3 py-1.5 font-medium ${tab === 'speed' ? 'bg-brand text-primary-foreground' : 'hover:bg-surface-2'}`}>
-          <Gauge className="h-3 w-3" />Speed
-        </button>
+        {cannibalizationFixes.length > 0 && (
+          <button onClick={() => setTab('cannibalization')} className={`flex items-center gap-1.5 px-3 py-1.5 font-medium ${tab === 'cannibalization' ? 'bg-red-500 text-white' : 'hover:bg-surface-2'}`}>
+            <Copy className="h-3 w-3" />Cannibalization ({cannibalizationFixes.length})
+          </button>
+        )}
       </div>
 
       {/* Search bar — shared across tabs */}
@@ -396,8 +399,62 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
         </div>
       )}
 
-      {/* ═══ Speed (PageSpeed Insights) ═══ */}
-      {tab === 'speed' && <SpeedClient brandId={brand.id} />}
+      {/* ═══ Cannibalization ═══ */}
+      {tab === 'cannibalization' && (() => {
+        // Group cannibalization fixes by keyword (from the issue field)
+        const byKeyword = new Map<string, PageFix[]>()
+        for (const fix of cannibalizationFixes) {
+          // Extract keyword from issue: "Competing with [url] for keyword: [keyword]"
+          const kwMatch = fix.issue.match(/keyword:\s*(.+)$/i)
+          const keyword = kwMatch ? kwMatch[1].trim() : fix.issue
+          if (!byKeyword.has(keyword)) byKeyword.set(keyword, [])
+          byKeyword.get(keyword)!.push(fix)
+        }
+        const groups = [...byKeyword.entries()].sort((a, b) => b[1].length - a[1].length)
+
+        return (
+          <div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Keyword cannibalization happens when multiple pages on your site compete for the same keyword, confusing Google about which page to rank.
+              For each keyword, we identify which page should be the primary one and what to do with the competing pages.
+            </p>
+            {groups.length === 0 && <div className="text-center py-8 text-sm text-muted-foreground">No cannibalization issues detected</div>}
+            <div className="space-y-2">
+              {groups.map(([keyword, fixes]) => {
+                const isOpen = expandedPages.has(`cannibal:${keyword}`)
+                return (
+                  <div key={keyword} className="rounded-lg border border-red-500/20 bg-card overflow-hidden">
+                    <button onClick={() => togglePage(`cannibal:${keyword}`)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-2/30 text-left">
+                      {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">{keyword}</div>
+                        <div className="text-[10px] text-red-400">{fixes.length + 1} pages competing for this keyword</div>
+                      </div>
+                      <span className="rounded px-2 py-0.5 text-[10px] font-medium bg-red-500/20 text-red-300">{fixes.length} to resolve</span>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-red-500/10 px-4 py-3 space-y-2">
+                        {fixes.map((fix, fi) => (
+                          <div key={fi} className="rounded-lg bg-surface-2/30 p-3 text-xs space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-400 font-medium truncate">{fix.url.replace(/^https?:\/\/[^/]+/, '')}</span>
+                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${fix.priority === 'high' ? 'bg-red-500/20 text-red-300' : fix.priority === 'medium' ? 'bg-amber-500/20 text-amber-300' : 'bg-surface-2 text-muted-foreground'}`}>{fix.priority}</span>
+                            </div>
+                            <div className="text-muted-foreground">{fix.current}</div>
+                            <div className="text-green-400 font-medium">{fix.suggested}</div>
+                            <div className="text-muted-foreground italic">{fix.reason}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
   )
 }

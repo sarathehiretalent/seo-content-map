@@ -36,13 +36,29 @@ export async function runContentBriefs(
 
     try {
       const result = await callClaude<{ briefs: Array<{ id: string; h2s: string[]; words: number; eeat: { exp: string; expt: string; auth: string; trust: string }; paa: string[]; links: Array<{ text: string; to: string }>; cta: string }> }>({
-        system: `Generate SEO content briefs. Keep brief. JSON only.`,
-        prompt: `Brand: ${brand.name}. Products: ${brand.coreProducts?.substring(0, 100) ?? ''}
+        system: `You are a senior SEO content strategist creating detailed content briefs for writers.
 
-Briefs for:
-${batch.map((p) => `- id:"${p.id}" title:"${p.title}" kw:"${p.targetKeyword}" type:${p.contentType} funnel:${p.funnelStage}`).join('\n')}
+BRAND: ${brand.name}
+PRODUCTS: ${brand.coreProducts?.substring(0, 200) ?? brand.name}
+TARGET AUDIENCE: ${brand.targetAudience?.substring(0, 150) ?? 'business decision-makers'}
 
-Return: { "briefs": [{ "id": "piece id", "h2s": ["H2 as question 1", "H2 2"], "words": 1500, "eeat": { "exp": "experience tip", "expt": "expertise tip", "auth": "authority tip", "trust": "trust tip" }, "paa": ["question 1"], "links": [{ "text": "anchor", "to": "target page" }], "cta": "call to action" }] }`,
+BRIEF REQUIREMENTS:
+- H2s: Generate 5-7 H2 headings. At least 3 must be QUESTIONS (what, how, why) for AEO/featured snippet optimization
+- Word count: 1,500-2,000 for informational content, 800-1,200 for commercial/transactional
+- E-E-A-T: Provide specific, actionable tips for each signal (not generic advice)
+  - Experience: What real-world example or case study to include
+  - Expertise: What data, statistics, or expert quotes to reference
+  - Authority: What credentials or trust signals to display
+  - Trust: What transparency elements to include (methodology, sources, disclaimers)
+- PAA: Include 3-4 "People Also Ask" questions that this article should answer directly (40-60 word answers)
+- Internal links: Suggest 2-3 anchor text + target page pairs from the brand's existing content
+- CTA: Specific call-to-action aligned with the funnel stage (TOFU = guide download, MOFU = demo/comparison, BOFU = free trial/contact)
+
+JSON only.`,
+        prompt: `Generate briefs for these content pieces:
+${batch.map((p) => `- id:"${p.id}" title:"${p.title}" keyword:"${p.targetKeyword}" type:${p.contentType} funnel:${p.funnelStage}`).join('\n')}
+
+Return: { "briefs": [{ "id": "piece id", "h2s": ["H2 as question 1", "H2 2", ...], "words": 1500, "eeat": { "exp": "experience tip", "expt": "expertise tip", "auth": "authority tip", "trust": "trust tip" }, "paa": ["question 1", "question 2", "question 3"], "links": [{ "text": "anchor text", "to": "/target-page-path" }], "cta": "specific call to action" }] }`,
         maxTokens: 2000,
       })
 

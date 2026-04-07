@@ -95,33 +95,32 @@ export async function buildKeywordPool(brandId: string): Promise<PoolKeyword[]> 
   console.log(`[KeywordPool] Source 2: DataForSEO related keywords`)
 
   // Get seeds from brand + top GSC keywords
+  // Parse target keywords from brand settings (one per line or comma-separated)
+  const clientTargetKws: string[] = brand.targetKeywords
+    ? brand.targetKeywords.split(/[\n,]+/).map((s: string) => s.trim().toLowerCase()).filter(Boolean)
+    : []
+
   const seedResult = await callClaude<{ seeds: string[] }>({
     system: 'Generate keyword seeds for SEO research. Include PRODUCT seeds AND SHOULDER TOPIC seeds. 2-4 words each. JSON only.',
     prompt: `Brand: ${brand.name}
-Products: ${brand.coreProducts?.substring(0, 200) ?? ''}
+Products: ${brand.coreProducts?.substring(0, 200) ?? brand.name}
 Target: ${brand.targetAudience?.substring(0, 150) ?? ''}
+${clientTargetKws.length > 0 ? `Client priority keywords: ${clientTargetKws.join(', ')}` : ''}
 
 Generate 15-18 seeds in 3 categories:
-PRODUCT (5-6): directly about what they sell (integrity test, pre employment testing, honesty test)
-PROBLEM (6-8): problems buyers have BEFORE needing the product (employee theft, employee turnover, workplace safety, retail loss prevention, workers compensation fraud)
-ADJACENT (3-4): related topics the ICP searches (workplace ethics, employee retention, background check employment, new hire onboarding)
+PRODUCT (5-6): directly about what the brand sells — their core product/service
+PROBLEM (6-8): problems buyers have BEFORE needing the product — pain points that drive them to search
+ADJACENT (3-4): related topics the target audience searches — expands topical authority
 
 Return: { "seeds": ["seed1", "seed2", ...] }`,
     maxTokens: 400,
   })
 
-  // Combine Claude seeds + guaranteed high-performing seeds we tested
-  const claudeSeeds = seedResult.seeds?.slice(0, 12) ?? []
-  const guaranteedSeeds = [
-    'integrity test', 'pre employment testing', 'honesty test', 'employee screening',
-    'employee theft', 'employee turnover', 'workplace safety', 'retail loss prevention',
-    'workplace ethics', 'employee retention', 'background check employment',
-    'new hire onboarding', 'workers compensation fraud', 'shrinkage retail',
-  ]
-  // Merge: Claude seeds first, then guaranteed seeds that Claude missed
+  // Combine Claude seeds + client target keywords as priority seeds
+  const claudeSeeds = seedResult.seeds?.slice(0, 14) ?? []
   const seedSet = new Set(claudeSeeds.map((s) => s.toLowerCase()))
-  const seeds = [...claudeSeeds, ...guaranteedSeeds.filter((s) => !seedSet.has(s.toLowerCase()))].slice(0, 20)
-  console.log(`[KeywordPool] Seeds: ${seeds.join(', ')}`)
+  const seeds = [...clientTargetKws.filter((s) => !seedSet.has(s)), ...claudeSeeds].slice(0, 20)
+  console.log(`[KeywordPool] Seeds (${clientTargetKws.length} from client, ${claudeSeeds.length} from AI): ${seeds.join(', ')}`)
 
   for (const seed of seeds) {
     const related = await fetchRelatedKeywords(seed)
@@ -131,11 +130,9 @@ Return: { "seeds": ["seed1", "seed2", ...] }`,
       pool.set(key, {
         keyword: kw.keyword, volume: kw.volume, kd: kw.kd, cpc: kw.cpc,
         source: 'dataforseo', existingUrl: null, position: null,
-        rationale: seed.includes('integrity') || seed.includes('honesty') || seed.includes('pre employment') || seed.includes('screening')
-          ? `Product — directly about your core service, builds product authority`
-          : seed.includes('theft') || seed.includes('turnover') || seed.includes('safety') || seed.includes('loss')
-            ? `Problem — attracts buyers experiencing "${seed}", drives awareness`
-            : `Shoulder — expands reach to "${seed}" audience, builds topical depth`,
+        rationale: clientTargetKws.some((tk) => seed.includes(tk) || tk.includes(seed))
+          ? `Priority — client target keyword, directly about core business`
+          : `Related to "${seed}" — expands topical authority and audience reach`,
       })
     }
     await new Promise((r) => setTimeout(r, 1000))
@@ -150,7 +147,7 @@ Return: { "seeds": ["seed1", "seed2", ...] }`,
 Target: ${brand.targetAudience?.substring(0, 80) ?? ''}
 
 Suggest 15-20 keywords CEOs/business owners would search. Mix problems + solutions + comparisons.
-Return: { "keywords": ["cost of bad hire", "reduce employee theft", ...] }`,
+Return: { "keywords": ["keyword 1", "keyword 2", ...] }`,
     maxTokens: 400,
   })
 
@@ -182,8 +179,11 @@ Return: { "keywords": ["cost of bad hire", "reduce employee theft", ...] }`,
 Brand: ${brand.name}
 Products: ${brand.coreProducts?.substring(0, 200) ?? ''}
 NOT: ${brand.notBrand?.substring(0, 150) ?? ''}`,
-      prompt: `Keep ONLY keywords about: integrity testing, honesty testing, pre-employment screening, employee theft prevention, hiring risk, workforce integrity, employee turnover related to hiring quality.
-Remove: mobile testing, software testing, general HR software, unrelated industries, job seeker queries.
+      prompt: `Keep ONLY keywords relevant to this brand's products/services and their buyers' problems.
+Products: ${brand.coreProducts?.substring(0, 200) ?? brand.name}
+Target audience: ${brand.targetAudience?.substring(0, 150) ?? ''}
+NOT about: ${brand.notBrand?.substring(0, 150) ?? 'unrelated industries'}
+Remove: keywords about unrelated industries, job seeker queries, competitor brand names, topics that don't connect to the product.
 
 Keywords: ${nonGscKws.map((k) => k.keyword).join(', ')}
 

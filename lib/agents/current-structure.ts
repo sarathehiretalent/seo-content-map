@@ -82,12 +82,12 @@ A PILLAR page:
 - Covers a broad topic comprehensively
 - Has many keywords with significant impressions
 - Usually the homepage or main service pages
-- Example: "/blog/pre-employment-testing-guide/" is a pillar about pre-employment testing
+- Example: "/blog/[product]-complete-guide/" is a pillar about the brand's core product
 
 A CLUSTER page:
 - Covers a specific subtopic in depth
 - Supports a pillar page's topic
-- Example: "/blog/integrity-test-questions/" is a cluster under the integrity testing pillar
+- Example: "/blog/[product]-faq/" is a cluster under the main product pillar
 
 An ORPHAN page:
 - Has traffic but doesn't clearly belong to any pillar/cluster group

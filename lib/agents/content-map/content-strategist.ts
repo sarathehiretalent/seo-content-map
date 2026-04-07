@@ -88,9 +88,12 @@ export async function runContentStrategist(
   // ── Step A: Pre-group product keywords and send to Claude ──
   const topKws = kwsWithVolume.slice(0, 80)
 
-  // Pre-group: find keywords related to core product terms
+  // Pre-group: find keywords related to core product terms (dynamic from brand)
   const productGroups: Record<string, typeof topKws> = {}
-  const coreStemWords = ['integrity', 'honesty', 'pre employment', 'pre-employment', 'screening', 'employment test']
+  // Extract stem words from brand products + target keywords
+  const coreProductWords = (brand.coreProducts ?? brand.name).toLowerCase().split(/[,.\-\n]+/).map((s: string) => s.trim()).filter((s: string) => s.length >= 3)
+  const clientKws: string[] = brand.targetKeywords ? brand.targetKeywords.split(/[\n,]+/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : []
+  const coreStemWords = [...new Set([...coreProductWords, ...clientKws])].slice(0, 10)
 
   for (const kw of topKws) {
     const kwLower = kw.keyword.toLowerCase()
@@ -129,14 +132,15 @@ YOUR TASK: Select 1-2 PILLAR keywords and group clusters under them for 1 month 
 
 CRITICAL RULE — PILLAR SELECTION:
 The pillar keyword MUST be directly about the brand's CORE PRODUCT or SERVICE.
-- YES: "integrity test", "pre employment testing", "employee screening" — these are about what the brand SELLS
-- NO: "workplace ethics", "employee retention", "employee turnover" — these are shoulder topics for LATER months
+- YES: keywords that describe what the brand SELLS or does
+- NO: general industry topics, broad problems, or shoulder topics — those are for LATER months
 
 For THIS month, the pillars must be the product itself. Shoulder topics come in future months.
+${clientKws.length > 0 ? `\nCLIENT PRIORITY KEYWORDS (must include if relevant): ${clientKws.join(', ')}` : ''}
 
 CLUSTER MIX under each pillar:
 - ~50% PRODUCT: about the product/service itself (types, examples, how it works, questions)
-- ~30% PROBLEM: problems the product solves (theft, bad hires, turnover caused by poor hiring)
+- ~30% PROBLEM: problems the product solves — pain points the target audience faces
 - ~20% PURCHASE: buying signals (vs competitors, ROI, pricing, implementation, case studies)
 
 This mix means the pillar covers the topic from every angle: what it is, why you need it, and how to buy it.
@@ -158,7 +162,7 @@ INSTRUCTIONS:
 - The group with MOST keywords should be the PRIMARY pillar (give it 6-8 clusters)
 - Use the HIGHEST VOLUME keyword from each group as the pillar keyword
 - Pick the best 5-8 clusters per pillar from the group + 2-3 problem/purchase from "other"
-- If there are 30+ integrity keywords, give integrity the most clusters
+- If one product group has 30+ keywords, give that group the most clusters
 - Total: 12-16 pieces across all pillars
 
 Return: { "pillars": [{ "name": "Pillar name", "keyword": "exact keyword from the groups", "volume": 720, "clusterKeywords": ["kw1", "kw2"] }] }`,
@@ -204,9 +208,9 @@ For each keyword return:
 }] }
 
 Categories:
-- "problem": about a PROBLEM the audience has (theft, turnover, hiring risk)
-- "product": about the PRODUCT/SERVICE (integrity test, assessment, screening)
-- "purchase": about BUYING (pricing, ROI, comparison, implementation, case study)`,
+- "problem": about a PROBLEM the audience has — pain points they face before needing the product
+- "product": about the PRODUCT/SERVICE — what it is, how it works, types, examples
+- "purchase": about BUYING — pricing, ROI, comparison, implementation, case study`,
       maxTokens: 3000,
     })
 

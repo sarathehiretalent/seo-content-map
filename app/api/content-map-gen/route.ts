@@ -6,7 +6,7 @@ import { runContentBriefs } from '@/lib/agents/content-map/content-brief'
 import { runQualityReview } from '@/lib/agents/content-map/quality-reviewer'
 
 export async function POST(request: NextRequest) {
-  const { brandId, action, pillarName, contentMapId } = await request.json()
+  const { brandId, action, pillarName, contentMapId, pieceId } = await request.json()
 
   // ── Action: generate (initial — discovers topics and creates pillar structure) ──
   if (!action || action === 'generate') {
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
 
   // ── Action: generate-brief (generates brief for ONE keyword) ──
   if (action === 'generate-brief' && contentMapId) {
-    const { pieceId } = await request.json().catch(() => ({ pieceId: null }))
     if (!pieceId) return NextResponse.json({ error: 'pieceId required' }, { status: 400 })
     runSingleBrief(contentMapId, pieceId, brandId).catch(console.error)
     return NextResponse.json({ ok: true })

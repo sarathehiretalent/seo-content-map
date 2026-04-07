@@ -27,15 +27,15 @@ export async function runCompetitorGap(brandId: string): Promise<CompetitorKeywo
   console.log(`[CompetitorGap] Generating industry keywords...`)
   const kwResult = await callClaude<{ keywords: string[] }>({
     system: 'You generate search keywords for a specific industry niche. JSON only.',
-    prompt: `For a company that sells: ${brand.coreProducts ?? 'pre-employment integrity testing'}
-Target audience: ${brand.targetAudience ?? 'HR managers'}
+    prompt: `For a company that sells: ${brand.coreProducts ?? brand.name}
+Target audience: ${brand.targetAudience ?? 'decision makers'}
 
 Generate 20-25 keywords that a potential BUYER would search for when looking for this type of product/service.
 Include:
-- Product-focused: "integrity test for hiring", "pre employment honesty test", "employee integrity assessment"
-- Problem-focused: "how to reduce employee theft", "pre employment screening tools", "reduce workplace fraud"
-- Comparison: "integrity test vs background check", "best integrity testing companies"
-- Commercial intent: "integrity test pricing", "buy integrity assessment", "integrity test provider"
+- Product-focused: keywords directly about the product/service
+- Problem-focused: problems the buyer faces that this product solves
+- Comparison: "[product] vs [alternative]", "best [product category] companies"
+- Commercial intent: "[product] pricing", "buy [product]", "[product] provider"
 
 Return: { "keywords": ["keyword1", "keyword2", ...] }`,
     maxTokens: 1024,

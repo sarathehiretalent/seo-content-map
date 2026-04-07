@@ -97,24 +97,22 @@ export async function filterCompetitorKeywordsByIcp(
 ${brandContext}
 
 KEEP ONLY keywords about:
-- Pre-employment integrity tests/assessments specifically
-- Honesty testing for hiring
-- Employee integrity screening
-- Workplace theft/risk prevention through testing
-- Topics an HR manager would search when looking for integrity testing solutions
+- The brand's core product/service and closely related terms
+- Problems that the brand's target audience faces that the product solves
+- Topics the target audience would search when looking for this type of solution
+- Comparisons, pricing, or buying guides for this specific product category
 
 REMOVE keywords about:
-- Personality tests (DISC, Myers-Briggs, Big Five) — different product
-- Typing tests, skills assessments, aptitude tests — different product
-- General HR software, ATS, recruiting tools — different category
-- Background checks (unless combined with integrity testing)
-- Job seeker queries, academic research
-- Any assessment type that is NOT integrity/honesty focused
+- Similar-sounding but DIFFERENT products or categories
+- Generic industry tools or software not specific to this brand's niche
+- Job seeker queries, academic research, student questions
+- Products or services the brand explicitly does NOT offer
+- Any topic that wouldn't lead a buyer toward this brand's product
 
-Be VERY strict. If a keyword is about any type of assessment OTHER than integrity/honesty, remove it.
+Be VERY strict. If a keyword is about a different product category even if it's in the same industry, remove it.
 
 Return ONLY the keyword strings that pass. JSON only.`,
-      prompt: `Filter — keep ONLY integrity/honesty testing related keywords:
+      prompt: `Filter — keep ONLY keywords relevant to this brand's product:
 
 ${JSON.stringify(batch.map(k => k.keyword), null, 2)}
 

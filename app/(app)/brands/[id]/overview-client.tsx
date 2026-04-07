@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Eye, MousePointerClick, BarChart3,
   FileText, Stethoscope, Map, ArrowRight, Globe, Target,
-  Zap, Bot, FileCheck, FileX,
+  Zap, Bot, FileCheck, FileX, Gauge,
 } from 'lucide-react'
 
 interface TopKeyword {
@@ -30,6 +30,11 @@ interface Stats {
   contentMaps: number
   lastDiagStatus: string | null
   lastMapStatus: string | null
+  hasPageAudit: boolean
+  hasContentMap: boolean
+  hasAeo: boolean
+  hasSpeed: boolean
+  hasPerformance: boolean
 }
 
 interface GscOverview {
@@ -41,7 +46,7 @@ interface GscOverview {
 }
 
 interface Props {
-  brand: { id: string; name: string; domain: string; gscProperty: string | null }
+  brand: { id: string; name: string; domain: string; gscProperty: string | null; brandIntelligence?: string | null }
   topKeywords: TopKeyword[]
   stats: Stats
 }
@@ -189,17 +194,19 @@ export function OverviewClient({ brand, topKeywords, stats }: Props) {
           <div className="space-y-2">
             {[
               { step: 1, title: 'Brand Analysis', desc: 'Deep research on your brand', href: `/brands/${brand.id}/settings`, icon: Globe,
-                done: stats.diagnostics > 0 },
+                done: !!brand.brandIntelligence },
               { step: 2, title: 'Diagnostic', desc: 'Rankings, SERP, structure', href: `/brands/${brand.id}/diagnostic`, icon: Stethoscope,
                 done: stats.lastDiagStatus === 'completed', active: !!stats.lastDiagStatus && stats.lastDiagStatus !== 'completed' && stats.lastDiagStatus !== 'failed' },
               { step: 3, title: 'Optimize', desc: 'Page audit & quick wins', href: `/brands/${brand.id}/optimize`, icon: Zap,
-                locked: stats.lastDiagStatus !== 'completed' },
+                done: stats.hasPageAudit, locked: stats.lastDiagStatus !== 'completed' },
               { step: 4, title: 'Content Map', desc: 'Pillar/cluster strategy', href: `/brands/${brand.id}/content-map`, icon: Map,
-                locked: stats.lastDiagStatus !== 'completed' },
+                done: stats.hasContentMap, locked: stats.lastDiagStatus !== 'completed' },
               { step: 5, title: 'AEO', desc: 'Answer Engine Optimization', href: `/brands/${brand.id}/aoe`, icon: Bot,
-                locked: stats.lastDiagStatus !== 'completed' },
-              { step: 6, title: 'Performance', desc: 'Track results & ROI', href: `/brands/${brand.id}/performance`, icon: BarChart3,
-                locked: stats.lastDiagStatus !== 'completed' },
+                done: stats.hasAeo, locked: stats.lastDiagStatus !== 'completed' },
+              { step: 6, title: 'Speed', desc: 'Core Web Vitals & fixes', href: `/brands/${brand.id}/speed`, icon: Gauge,
+                done: stats.hasSpeed, locked: stats.lastDiagStatus !== 'completed' },
+              { step: 7, title: 'Performance', desc: 'Track results & ROI', href: `/brands/${brand.id}/performance`, icon: BarChart3,
+                done: stats.hasPerformance, locked: stats.lastDiagStatus !== 'completed' },
             ].map((s) => (
               <Link key={s.step} href={s.href}
                 className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${

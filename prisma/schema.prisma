@@ -30,6 +30,58 @@ model GoogleToken {
 
 // ─── Multi-Brand ────────────────────────────
 
+// ─── Users & Auth ────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("user") // admin | user
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions     Session[]
+  brandMembers BrandMember[]
+  activityLogs ActivityLog[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BrandMember {
+  id      String @id @default(uuid())
+  userId  String
+  brandId String
+  role    String @default("viewer") // viewer | editor | analyst
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, brandId])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  brandId   String?
+  action    String   // login, run_diagnostic, generate_content_map, run_optimize, etc.
+  details   String?  // JSON with extra context
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Brand ───────────────────────────────────
+
 model Brand {
   id          String   @id @default(uuid())
   name        String
@@ -37,14 +89,16 @@ model Brand {
   gscProperty String?
   vertical    String?
   description String?
+  createdBy   String?  // userId of creator
   // Brand Intelligence (AI-generated, editable)
-  coreProducts       String?  // What the brand sells/does
-  notBrand           String?  // What the brand is NOT (similar names, unrelated topics)
-  targetAudience     String?  // Who they serve
-  competitors        String?  // Direct competitors
-  contentTopics      String?  // Topics the site covers (JSON string[])
-  sitePages          String?  // Key pages with descriptions (JSON)
-  brandIntelligence  String?  // Full AI-generated brand profile
+  coreProducts       String?
+  notBrand           String?
+  targetAudience     String?
+  competitors        String?
+  contentTopics      String?
+  sitePages          String?
+  brandIntelligence  String?
+  targetKeywords     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -55,6 +109,8 @@ model Brand {
   serpAnalyses    SerpAnalysis[]
   pageAudits     PageAudit[]
   aoeStrategies  AoeStrategy[]
+  performanceSnapshots PerformanceSnapshot[]
+  members        BrandMember[]
 }
 
 // ─── Page Audit (Optimize section) ──────────
@@ -260,6 +316,39 @@ model AoeStrategyItem {
   createdAt          DateTime @default(now())
 
   strategy AoeStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+}
+
+// ─── Performance Snapshots ──────────────────
+
+model PerformanceSnapshot {
+  id                 String   @id @default(uuid())
+  brandId            String
+  weekOf             String                          // Monday date: "2026-04-06"
+  // Aggregate metrics
+  totalClicks        Int      @default(0)
+  totalImpressions   Int      @default(0)
+  avgCtr             Float    @default(0)
+  avgPosition        Float    @default(0)
+  // Distribution
+  top3Count          Int      @default(0)
+  top10Count         Int      @default(0)
+  top20Count         Int      @default(0)
+  top50Count         Int      @default(0)
+  totalKeywords      Int      @default(0)
+  // Value
+  trafficValue       Float    @default(0)
+  // Keyword positions (JSON: top 200 keywords with positions)
+  keywordPositions   String   @default("[]")         // JSON: [{ query, position, clicks, impressions, page }]
+  // Content impact
+  contentPublished   Int      @default(0)
+  contentRanking     Int      @default(0)
+  aeoActionsDone     Int      @default(0)
+  aeoActionsTotal    Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, weekOf])
 }
 
 // ─── Page Optimization ──────────────────────

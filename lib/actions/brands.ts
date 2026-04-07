@@ -51,7 +51,7 @@ export async function updateBrand(id: string, formData: FormData) {
 
   const fields = [
     'name', 'domain', 'vertical', 'description', 'gscProperty',
-    'coreProducts', 'notBrand', 'targetAudience', 'competitors', 'brandIntelligence',
+    'coreProducts', 'notBrand', 'targetAudience', 'competitors', 'brandIntelligence', 'targetKeywords',
   ]
 
   for (const field of fields) {

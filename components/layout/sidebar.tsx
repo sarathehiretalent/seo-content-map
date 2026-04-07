@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   Globe,
@@ -13,6 +15,10 @@ import {
   Settings,
   Stethoscope,
   BarChart3,
+  Gauge,
+  Shield,
+  LogOut,
+  User,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +39,17 @@ const mainNav = [
 
 export function Sidebar({ brands }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/auth').then((r) => r.json()).then((d) => setCurrentUser(d.user)).catch(() => {})
+  }, [])
+
+  async function handleLogout() {
+    await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) })
+    router.push('/login')
+  }
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-border bg-surface">
@@ -96,6 +113,7 @@ export function Sidebar({ brands }: SidebarProps) {
                           { href: `${brandPath}/optimize`, label: 'Optimize', icon: Zap },
                           { href: `${brandPath}/content-map`, label: 'Content Map', icon: Map },
                           { href: `${brandPath}/aoe`, label: 'AEO', icon: Bot },
+                          { href: `${brandPath}/speed`, label: 'Speed', icon: Gauge },
                           { href: `${brandPath}/performance`, label: 'Performance', icon: BarChart3 },
                           { href: `${brandPath}/settings`, label: 'Settings', icon: Settings },
                         ].map((sub) => (
@@ -123,14 +141,36 @@ export function Sidebar({ brands }: SidebarProps) {
         )}
       </nav>
 
-      <div className="border-t border-border p-3">
-        <Link
-          href="/brands/new"
-          className="flex items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand/90"
-        >
-          <Plus className="h-4 w-4" />
-          New Brand
-        </Link>
+      <div className="border-t border-border p-3 space-y-2">
+        {currentUser?.role === 'admin' && (
+          <>
+            <Link href="/admin"
+              className={cn('flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                pathname === '/admin' ? 'text-brand bg-brand/10' : 'text-muted-foreground hover:text-foreground')}>
+              <Shield className="h-3.5 w-3.5" />Admin Panel
+            </Link>
+            <Link href="/brands/new"
+              className="flex items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand/90">
+              <Plus className="h-4 w-4" />New Brand
+            </Link>
+          </>
+        )}
+        {currentUser && (
+          <div className="flex items-center justify-between rounded-md px-2 py-1.5">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-[10px] font-bold text-brand">
+                {currentUser.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="text-[11px] font-medium leading-tight">{currentUser.name}</div>
+                <div className="text-[9px] text-muted-foreground">{currentUser.role}</div>
+              </div>
+            </div>
+            <button onClick={handleLogout} className="text-muted-foreground hover:text-foreground" title="Logout">
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   )

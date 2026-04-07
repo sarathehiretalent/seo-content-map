@@ -18,6 +18,7 @@ export function BrandTabs({ brandId }: BrandTabsProps) {
     { href: `${base}/optimize`, label: 'Optimize' },
     { href: `${base}/content-map`, label: 'Content Map' },
     { href: `${base}/aoe`, label: 'AEO' },
+    { href: `${base}/speed`, label: 'Speed' },
     { href: `${base}/performance`, label: 'Performance' },
     { href: `${base}/settings`, label: 'Settings' },
   ]

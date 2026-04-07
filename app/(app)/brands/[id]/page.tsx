@@ -28,6 +28,13 @@ export default async function BrandOverviewPage({
   // Get site pages count from scraped data
   const sitePages: Array<{ url: string }> = brand.sitePages ? JSON.parse(brand.sitePages) : []
 
+  // Check completion of each section
+  const hasPageAudit = await prisma.pageAudit.count({ where: { brandId: id, status: 'completed' } }) > 0
+  const hasContentMap = brand.contentMaps[0]?.status === 'completed'
+  const hasAeo = await prisma.aoeStrategy.count({ where: { brandId: id } }) > 0
+  const hasSpeed = await prisma.apiCache.count({ where: { cacheKey: `pagespeed:${id}` } }) > 0
+  const hasPerformance = await prisma.performanceSnapshot.count({ where: { brandId: id } }) > 0
+
   // Keyword stats from DB
   const allKeywords = await prisma.keyword.findMany({
     where: { brandId: id },
@@ -61,6 +68,11 @@ export default async function BrandOverviewPage({
         contentMaps: brand._count.contentMaps,
         lastDiagStatus: brand.diagnostics[0]?.status ?? null,
         lastMapStatus: brand.contentMaps[0]?.status ?? null,
+        hasPageAudit,
+        hasContentMap,
+        hasAeo,
+        hasSpeed,
+        hasPerformance,
       }}
     />
   )
