@@ -14,6 +14,8 @@ interface Brand {
   gscProperty: string | null
   vertical: string | null
   description: string | null
+  brandIntelligence: string | null
+  coreProducts: string | null
   diagnostics: Array<{
     id: string
     name: string
