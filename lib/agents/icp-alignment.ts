@@ -39,10 +39,28 @@ export async function classifyKeywordsByIcp(
 
 ${brandContext}
 
-For each keyword, determine:
-- "aligned": A person searching this is likely part of the ICP — they could become a customer
-- "misaligned": Related to the brand's industry but the searcher is NOT the ICP (e.g., students, job seekers, researchers — not buyers)
-- "irrelevant": Not related to the brand's business at all
+CLASSIFICATION RULES:
+
+"aligned" — The searcher has BUYING POWER or INFLUENCE over a purchase decision:
+- Branded searches (the brand's own name) — a buyer checking the brand
+- "[product] for employers/companies/hiring" — buyer searching for a solution
+- "[product] pricing/cost/ROI/comparison/review" — commercial/transactional intent
+- "best [product category]", "top [product] companies" — shopping
+- "how to reduce [problem]", "prevent [problem]" — decision-maker looking for solutions
+- Problems the ICP faces that the product solves — pain-point awareness
+
+"misaligned" — Related to the brand's industry but the searcher is the END USER, not the buyer:
+- "[product] meaning/definition" — likely someone TAKING a test, not buying one
+- "how to pass [product]", "[product] questions and answers" — test-taker preparing
+- "[product] examples/sample" — candidate practicing, not employer purchasing
+- Job seekers, students, employees on the receiving end of the product
+- Academic or psychological research about the topic
+
+"irrelevant" — Not related to the brand's business at all:
+- Completely different product category the brand does NOT sell
+- Different industry entirely
+
+KEY PRINCIPLE: Ask "WHO is searching?" — if it's the BUYER (employer, manager, business owner), it's aligned. If it's the END USER (candidate, employee, student, test-taker), it's misaligned. If it's neither, it's irrelevant.
 
 Keep reasons to 1 short sentence.
 Respond with valid JSON only.`,

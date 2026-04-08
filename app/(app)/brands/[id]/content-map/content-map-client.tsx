@@ -56,7 +56,7 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
   const [funnelFilter, setFunnelFilter] = useState<string>('all')
   const [poolSortKey, setPoolSortKey] = useState<'volume' | 'kd' | 'cpc' | 'keyword'>('volume')
   const [poolSortDir, setPoolSortDir] = useState<'asc' | 'desc'>('desc')
-  const [poolStatusFilter, setPoolStatusFilter] = useState<'all' | 'used' | 'available'>('all')
+  const [poolStatusFilter, setPoolStatusFilter] = useState<'all' | 'used' | 'new' | 'optimize'>('all')
 
   // Merge ALL content maps (accumulated months)
   const allPieces: ContentPiece[] = []
@@ -480,9 +480,13 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
           {/* ═══ Keyword Pool Tab ═══ */}
           {tab === 'pool' && (() => {
             const usedKws = new Set(allPieces.map((p) => p.targetKeyword.toLowerCase()))
+            // Separate: keywords with existing dedicated pages (not homepage) vs new opportunities
+            const hasExistingPage = (k: any) => k.existingUrl && k.existingUrl !== '/' && k.existingUrl !== ''
+            const poolNewContent = allPoolKeywords.filter((k) => !hasExistingPage(k) && !usedKws.has(k.keyword.toLowerCase()))
+            const poolOptimize = allPoolKeywords.filter((k) => hasExistingPage(k) && !usedKws.has(k.keyword.toLowerCase()))
             const poolFiltered = allPoolKeywords
               .filter((k) => !searchQuery || k.keyword.toLowerCase().includes(searchQuery.toLowerCase()))
-              .filter((k) => poolStatusFilter === 'all' ? true : poolStatusFilter === 'used' ? usedKws.has(k.keyword.toLowerCase()) : !usedKws.has(k.keyword.toLowerCase()))
+              .filter((k) => poolStatusFilter === 'all' ? true : poolStatusFilter === 'used' ? usedKws.has(k.keyword.toLowerCase()) : poolStatusFilter === 'new' ? (!hasExistingPage(k) && !usedKws.has(k.keyword.toLowerCase())) : poolStatusFilter === 'optimize' ? (hasExistingPage(k) && !usedKws.has(k.keyword.toLowerCase())) : !usedKws.has(k.keyword.toLowerCase()))
               .sort((a, b) => {
                 const av = poolSortKey === 'keyword' ? a.keyword : poolSortKey === 'volume' ? a.volume : poolSortKey === 'kd' ? (a.kd ?? 999) : (a.cpc ?? 0)
                 const bv = poolSortKey === 'keyword' ? b.keyword : poolSortKey === 'volume' ? b.volume : poolSortKey === 'kd' ? (b.kd ?? 999) : (b.cpc ?? 0)
@@ -504,24 +508,29 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
             return (
               <div>
                 {/* Clickable stats cards */}
-                <div className="mb-4 grid grid-cols-4 gap-3">
+                <div className="mb-4 grid grid-cols-5 gap-3">
                   <button onClick={() => setPoolStatusFilter(poolStatusFilter === 'all' ? 'all' : 'all')}
                     className={`rounded-lg bg-card p-3 text-center transition-all ${poolStatusFilter === 'all' ? 'border border-brand ring-1 ring-brand' : 'border border-transparent hover:border-muted-foreground/30'}`}>
                     <div className="text-xl font-bold">{allPoolKeywords.length}</div>
                     <div className="text-xs text-muted-foreground">All Keywords</div>
+                  </button>
+                  <button onClick={() => setPoolStatusFilter(poolStatusFilter === 'new' ? 'all' : 'new')}
+                    className={`rounded-lg bg-card p-3 text-center transition-all ${poolStatusFilter === 'new' ? 'border border-brand ring-1 ring-brand' : 'border border-transparent hover:border-muted-foreground/30'}`}>
+                    <div className="text-xl font-bold text-brand">{poolNewContent.length}</div>
+                    <div className="text-xs text-muted-foreground">New Content</div>
+                  </button>
+                  <button onClick={() => setPoolStatusFilter(poolStatusFilter === 'optimize' ? 'all' : 'optimize')}
+                    className={`rounded-lg bg-card p-3 text-center transition-all ${poolStatusFilter === 'optimize' ? 'border border-amber-500 ring-1 ring-amber-500' : 'border border-transparent hover:border-muted-foreground/30'}`}>
+                    <div className="text-xl font-bold text-amber-400">{poolOptimize.length}</div>
+                    <div className="text-xs text-muted-foreground">Optimize Existing</div>
                   </button>
                   <button onClick={() => setPoolStatusFilter(poolStatusFilter === 'used' ? 'all' : 'used')}
                     className={`rounded-lg bg-card p-3 text-center transition-all ${poolStatusFilter === 'used' ? 'border border-green-500 ring-1 ring-green-500' : 'border border-transparent hover:border-muted-foreground/30'}`}>
                     <div className="text-xl font-bold text-green-400">{poolUsed.length}</div>
                     <div className="text-xs text-muted-foreground">In Content Map</div>
                   </button>
-                  <button onClick={() => setPoolStatusFilter(poolStatusFilter === 'available' ? 'all' : 'available')}
-                    className={`rounded-lg bg-card p-3 text-center transition-all ${poolStatusFilter === 'available' ? 'border border-brand ring-1 ring-brand' : 'border border-transparent hover:border-muted-foreground/30'}`}>
-                    <div className="text-xl font-bold text-brand">{poolAvailable.length}</div>
-                    <div className="text-xs text-muted-foreground">Available</div>
-                  </button>
                   <div className="rounded-lg bg-card p-3 text-center border border-transparent">
-                    <div className="text-xl font-bold">{Math.ceil(poolAvailable.length / 14)}</div>
+                    <div className="text-xl font-bold">{Math.ceil(poolNewContent.length / 14)}</div>
                     <div className="text-xs text-muted-foreground">Months of Content</div>
                   </div>
                 </div>
@@ -574,8 +583,10 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
                                       {piece?.contentType === 'pillar' ? 'Pillar' : 'Cluster'}
                                     </span>
                                   )
+                                ) : hasExistingPage(kw) ? (
+                                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300">Optimize</span>
                                 ) : (
-                                  <span className="text-[10px] text-muted-foreground">Available</span>
+                                  <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[10px] text-brand">New</span>
                                 )}
                               </td>
                               <td className="px-3 py-1.5 text-muted-foreground">{kw.rationale}</td>
