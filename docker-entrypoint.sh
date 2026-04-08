@@ -7,7 +7,7 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const dbPath = '/app/prisma/dev.db';
 const db = new Database(dbPath);
-const sql = fs.readFileSync('/app/prisma/schema.sql', 'utf8');
+const sql = fs.readFileSync('/app/prisma-config/schema.sql', 'utf8');
 const stmts = sql.split(';').filter(s => s.trim());
 let created = 0;
 for (const s of stmts) {
