@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Map, Stethoscope, ChevronDown, ChevronRight, Search, Calendar, FileText, Network, ArrowUpDown } from 'lucide-react'
+import { Map, Stethoscope, ChevronDown, ChevronRight, Search, Calendar, FileText, Network, ArrowUpDown, Trash2 } from 'lucide-react'
 import { AnalysisProgress } from '@/components/analysis/analysis-progress'
 
 interface ContentPiece {
@@ -57,6 +57,15 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
   const [poolSortKey, setPoolSortKey] = useState<'volume' | 'kd' | 'cpc' | 'keyword'>('volume')
   const [poolSortDir, setPoolSortDir] = useState<'asc' | 'desc'>('desc')
   const [poolStatusFilter, setPoolStatusFilter] = useState<'all' | 'used' | 'new' | 'optimize'>('all')
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDeleteMap(mapId: string, mapName: string) {
+    if (!confirm(`Delete "${mapName}"? This will remove this content map and its briefs. Keywords and diagnostic data are NOT affected.`)) return
+    setDeleting(true)
+    await fetch('/api/content-map-gen/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contentMapId: mapId }) })
+    setDeleting(false)
+    router.refresh()
+  }
 
   // Merge ALL content maps (accumulated months)
   const allPieces: ContentPiece[] = []
@@ -100,12 +109,20 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
     if (!mapId) return
     setGeneratingBrief(pieceId)
     try {
-      await fetch('/api/content-map-gen', {
+      const res = await fetch('/api/content-map-gen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brandId: brand.id, action: 'generate-brief', contentMapId: mapId, pieceId }),
       })
-      await new Promise((r) => setTimeout(r, 10000))
+      if (!res.ok) { setGeneratingBrief(null); return }
+
+      // Poll every 3s for up to 60s until brief appears
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const check = await fetch(`/api/content-map-gen/status?contentMapId=${mapId}&pieceId=${pieceId}`)
+        const data = await check.json()
+        if (data.hasBrief) break
+      }
       router.refresh()
     } catch { /* ignore */ }
     setGeneratingBrief(null)
@@ -197,10 +214,18 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
           <p className="text-sm text-muted-foreground">Topical authority strategy with pillar/cluster/sub-cluster hierarchy</p>
           {hasData && <p className="text-[10px] text-muted-foreground mt-0.5">{allMaps.length} month(s) generated &middot; {pieces.length} total pieces &middot; {pieces.filter((p) => p.status === 'to_create').length} to create &middot; 3-4 per week</p>}
         </div>
-        <button onClick={handleRun} disabled={loading || !!runningId}
-          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-brand/90 disabled:opacity-50">
-          <Map className="h-4 w-4" />{loading ? 'Starting...' : hasData ? 'Generate Next Month' : 'Generate Content Map (Month 1)'}
-        </button>
+        <div className="flex items-center gap-2">
+          {hasData && allMaps.length > 0 && (
+            <button onClick={() => handleDeleteMap(allMaps[allMaps.length - 1].id, allMaps[allMaps.length - 1].name)} disabled={deleting}
+              className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50">
+              <Trash2 className="h-3.5 w-3.5" />{deleting ? 'Deleting...' : 'Delete Latest Map'}
+            </button>
+          )}
+          <button onClick={handleRun} disabled={loading || !!runningId}
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-brand/90 disabled:opacity-50">
+            <Map className="h-4 w-4" />{loading ? 'Starting...' : hasData ? 'Generate Next Month' : 'Generate Content Map (Month 1)'}
+          </button>
+        </div>
       </div>
 
       {runningId && <div className="mb-6"><AnalysisProgress pipelineId={runningId} type="content-map-gen" onComplete={() => { setRunningId(null); router.refresh() }} /></div>}
@@ -530,8 +555,10 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
                     <div className="text-xs text-muted-foreground">In Content Map</div>
                   </button>
                   <div className="rounded-lg bg-card p-3 text-center border border-transparent">
-                    <div className="text-xl font-bold">{Math.ceil(poolNewContent.length / 14)}</div>
-                    <div className="text-xs text-muted-foreground">Months of Content</div>
+                    <div className="text-xl font-bold">{Math.ceil((poolNewContent.length + poolOptimize.length) / 12)}</div>
+                    <div className="text-xs text-muted-foreground">Est. Months</div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{poolNewContent.length} new + {poolOptimize.length} opt</div>
+                    <div className="text-[8px] text-muted-foreground">Pool grows each month</div>
                   </div>
                 </div>
 
@@ -564,8 +591,11 @@ export function ContentMapClient({ brand, hasDiagnostic, allMaps, latestMap }: {
                           return (
                             <tr key={i} className={`border-b border-border/50 hover:bg-surface-2/30 ${isUsed ? 'bg-green-500/5' : ''}`}>
                               <td className="px-3 py-1.5">
-                                <div className="font-medium">{kw.keyword}</div>
-                                {kw.existingUrl && <div className="text-[10px] text-muted-foreground">{kw.existingUrl}</div>}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium">{kw.keyword}</span>
+                                  {kw.existingUrl === '/' && <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[9px] text-orange-300 flex-shrink-0">Homepage</span>}
+                                </div>
+                                {kw.existingUrl && kw.existingUrl !== '/' && <div className="text-[10px] text-muted-foreground">{kw.existingUrl}</div>}
                               </td>
                               <td className="px-2 py-1.5 text-right font-medium">{kw.volume.toLocaleString()}</td>
                               <td className="px-2 py-1.5 text-right">

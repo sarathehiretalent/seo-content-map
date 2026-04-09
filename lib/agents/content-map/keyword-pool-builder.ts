@@ -23,17 +23,19 @@ async function fetchRelatedKeywords(seed: string): Promise<Array<{ keyword: stri
     const res = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/related_keywords/live', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: DFS_AUTH() },
-      body: JSON.stringify([{ keyword: seed, location_code: 2840, language_code: 'en', limit: 20, filters: ['keyword_data.keyword_info.search_volume', '>', 10] }]),
+      body: JSON.stringify([{ keyword: seed, location_code: 2840, language_code: 'en', limit: 50, filters: ['keyword_data.keyword_info.search_volume', '>', 10] }]),
     })
-    if (!res.ok) return []
+    if (!res.ok) { console.log(`[KeywordPool] DataForSEO failed for "${seed}": ${res.status}`); return [] }
     const data = await res.json()
-    return (data.tasks?.[0]?.result?.[0]?.items ?? []).map((i: any) => ({
+    const items = (data.tasks?.[0]?.result?.[0]?.items ?? []).map((i: any) => ({
       keyword: i.keyword_data?.keyword,
       volume: i.keyword_data?.keyword_info?.search_volume ?? null,
       kd: i.keyword_data?.keyword_properties?.keyword_difficulty ?? null,
       cpc: i.keyword_data?.keyword_info?.cpc ?? null,
     })).filter((k: any) => k.keyword && k.keyword.length <= 60)
-  } catch { return [] }
+    console.log(`[KeywordPool] DataForSEO "${seed}": ${items.length} keywords`)
+    return items
+  } catch (e) { console.log(`[KeywordPool] DataForSEO error for "${seed}":`, e instanceof Error ? e.message : e); return [] }
 }
 
 /**
@@ -116,11 +118,22 @@ Return: { "seeds": ["seed1", "seed2", ...] }`,
     maxTokens: 400,
   })
 
-  // Combine Claude seeds + client target keywords as priority seeds
+  // Auto-extract seeds from top GSC keywords if no target keywords set
+  const gscSeeds: string[] = []
+  if (clientTargetKws.length === 0) {
+    const topGsc = gscKeywords
+      .filter((k) => k.searchVolume && k.searchVolume >= 50 && k.position <= 30)
+      .slice(0, 8)
+      .map((k) => k.query)
+    gscSeeds.push(...topGsc)
+    console.log(`[KeywordPool] Auto-extracted ${gscSeeds.length} seeds from top GSC keywords: ${gscSeeds.join(', ')}`)
+  }
+
+  // Combine: client targets first, then GSC seeds, then Claude seeds
   const claudeSeeds = seedResult.seeds?.slice(0, 14) ?? []
-  const seedSet = new Set(claudeSeeds.map((s) => s.toLowerCase()))
-  const seeds = [...clientTargetKws.filter((s) => !seedSet.has(s)), ...claudeSeeds].slice(0, 20)
-  console.log(`[KeywordPool] Seeds (${clientTargetKws.length} from client, ${claudeSeeds.length} from AI): ${seeds.join(', ')}`)
+  const seedSet = new Set([...clientTargetKws, ...gscSeeds, ...claudeSeeds].map((s) => s.toLowerCase()))
+  const seeds = [...new Set([...clientTargetKws, ...gscSeeds, ...claudeSeeds].map((s) => s.toLowerCase()))].slice(0, 25)
+  console.log(`[KeywordPool] Seeds (${clientTargetKws.length} client, ${gscSeeds.length} GSC, ${claudeSeeds.length} AI): ${seeds.join(', ')}`)
 
   // Collect all DataForSEO keywords first, then classify rationale in batch
   const dfKeywords: Array<{ keyword: string; volume: number; kd: number | null; cpc: number | null; seed: string }> = []
@@ -134,41 +147,15 @@ Return: { "seeds": ["seed1", "seed2", ...] }`,
     await new Promise((r) => setTimeout(r, 1000))
   }
 
-  // Classify rationale with Claude in one batch
-  if (dfKeywords.length > 0) {
-    let rationales: Record<string, string> = {}
-    try {
-      const classResult = await callClaude<{ rationales: Array<{ keyword: string; category: string; reason: string }> }>({
-        system: `Classify keywords for an SEO content strategy. For each keyword, determine:
-- category: "product" (directly about what the brand sells), "problem" (a pain point buyers face), "purchase" (buying/comparison intent), or "shoulder" (related topic that builds authority)
-- reason: 1 short sentence explaining WHY this keyword matters for the brand
-
-Brand: ${brand.name}
-Products: ${brand.coreProducts?.substring(0, 200) ?? ''}
-Target: ${brand.targetAudience?.substring(0, 100) ?? ''}
-
-JSON only.`,
-        prompt: `Classify these keywords:\n${dfKeywords.slice(0, 60).map(k => k.keyword).join('\n')}\n\nReturn: { "rationales": [{ "keyword": "...", "category": "product|problem|purchase|shoulder", "reason": "..." }] }`,
-        maxTokens: 2500,
-      })
-      for (const r of classResult.rationales ?? []) {
-        const cat = r.category === 'product' ? 'Product' : r.category === 'problem' ? 'Problem' : r.category === 'purchase' ? 'Purchase' : 'Shoulder'
-        rationales[r.keyword.toLowerCase()] = `${cat} — ${r.reason}`
-      }
-    } catch { /* fallback to generic rationale */ }
-
-    for (const kw of dfKeywords) {
-      const key = kw.keyword.toLowerCase()
-      if (pool.has(key)) continue
-      const isClientTarget = clientTargetKws.some((tk) => kw.seed.includes(tk) || tk.includes(kw.seed))
-      pool.set(key, {
-        keyword: kw.keyword, volume: kw.volume, kd: kw.kd, cpc: kw.cpc,
-        source: 'dataforseo', existingUrl: null, position: null,
-        rationale: isClientTarget
-          ? `Priority — client target keyword, directly about core business`
-          : rationales[key] ?? `Related to "${kw.seed}" — expands topical authority`,
-      })
-    }
+  // Add DataForSEO keywords to pool (classification happens later for ALL keywords)
+  for (const kw of dfKeywords) {
+    const key = kw.keyword.toLowerCase()
+    if (pool.has(key)) continue
+    pool.set(key, {
+      keyword: kw.keyword, volume: kw.volume, kd: kw.kd, cpc: kw.cpc,
+      source: 'dataforseo', existingUrl: null, position: null,
+      rationale: `From seed "${kw.seed}"`,
+    })
   }
   console.log(`[KeywordPool] After related keywords: ${pool.size}`)
 
@@ -230,7 +217,43 @@ Return: { "relevant": ["kw1", "kw2"] }`,
 
   const filtered = [...gscKws, ...filteredNonGsc].sort((a, b) => b.volume - a.volume)
   console.log(`[KeywordPool] Final: ${filtered.length} keywords`)
-  console.log(`[KeywordPool] Top 10: ${filtered.slice(0, 10).map((k) => k.keyword + '(' + k.volume + ')').join(', ')}`)
 
+  // ── Classify ALL keywords with Product/Problem/Purchase/Shoulder ──
+  console.log(`[KeywordPool] Classifying all ${filtered.length} keywords...`)
+  try {
+    // Process in batches of 60
+    for (let i = 0; i < filtered.length; i += 60) {
+      const batch = filtered.slice(i, i + 60)
+      const classResult = await callClaude<{ rationales: Array<{ keyword: string; category: string; reason: string }> }>({
+        system: `Classify keywords for an SEO content strategy. For each keyword determine:
+- category: "product" (directly about the brand's product/service), "problem" (a pain point buyers face that the product solves), "purchase" (buying/comparison intent), or "shoulder" (related industry topic that builds authority but isn't directly about the product)
+- reason: 1 short sentence explaining the SEO value of this keyword
+
+Brand: ${brand.name}
+Products: ${brand.coreProducts?.substring(0, 200) ?? ''}
+Target: ${brand.targetAudience?.substring(0, 100) ?? ''}
+
+JSON only.`,
+        prompt: `Classify:\n${batch.map(k => k.keyword).join('\n')}\n\nReturn: { "rationales": [{ "keyword": "...", "category": "product|problem|purchase|shoulder", "reason": "..." }] }`,
+        maxTokens: 3000,
+      })
+      for (const r of classResult.rationales ?? []) {
+        const kw = filtered.find(k => k.keyword.toLowerCase() === r.keyword.toLowerCase())
+        if (kw) {
+          const cat = r.category === 'product' ? 'Product' : r.category === 'problem' ? 'Problem' : r.category === 'purchase' ? 'Purchase' : 'Shoulder'
+          // Keep position info for GSC keywords, add classification
+          const posInfo = kw.source === 'gsc' && kw.position ? ` · pos ${Math.round(kw.position)}` : ''
+          kw.rationale = `${cat} — ${r.reason}${posInfo}`
+        }
+      }
+    }
+    const cats: Record<string, number> = {}
+    filtered.forEach(k => { const c = k.rationale?.split(' — ')[0] ?? '?'; cats[c] = (cats[c] ?? 0) + 1 })
+    console.log(`[KeywordPool] Classification:`, JSON.stringify(cats))
+  } catch (e) {
+    console.log(`[KeywordPool] Classification failed, keeping existing rationale:`, e instanceof Error ? e.message : e)
+  }
+
+  console.log(`[KeywordPool] Top 10: ${filtered.slice(0, 10).map((k) => k.keyword + '(' + k.volume + ')').join(', ')}`)
   return filtered
 }
