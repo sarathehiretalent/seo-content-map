@@ -187,6 +187,7 @@ CREATE TABLE "PageAudit" (
     "auditData" TEXT,
     "quickWins" TEXT,
     "recommendations" TEXT,
+    "fixedPages" TEXT NOT NULL DEFAULT '[]',
     "summary" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,

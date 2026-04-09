@@ -46,3 +46,39 @@ export async function fetchSitemapStats(domain: string): Promise<SitemapStats> {
 
   return stats
 }
+
+/** Extract all URLs from sitemap */
+export async function fetchSitemapUrls(domain: string): Promise<string[]> {
+  const sitemapUrl = `https://${domain}/sitemap.xml`
+  const urls: string[] = []
+
+  try {
+    const res = await fetch(sitemapUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return urls
+    const xml = await res.text()
+
+    if (xml.includes('<sitemapindex')) {
+      const sitemapUrls = [...xml.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)].map((m) => m[1])
+      for (const smUrl of sitemapUrls) {
+        try {
+          const smRes = await fetch(smUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: AbortSignal.timeout(10000),
+          })
+          if (!smRes.ok) continue
+          const smXml = await smRes.text()
+          const smUrls = [...smXml.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)].map((m) => m[1])
+          urls.push(...smUrls)
+        } catch { /* skip */ }
+      }
+    } else {
+      const pageUrls = [...xml.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)].map((m) => m[1])
+      urls.push(...pageUrls)
+    }
+  } catch { /* sitemap not accessible */ }
+
+  return urls
+}

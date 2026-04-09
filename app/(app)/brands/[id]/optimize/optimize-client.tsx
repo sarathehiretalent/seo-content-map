@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Zap, Search, FileText, ChevronDown, ChevronRight, Stethoscope, AlertTriangle, CheckCircle2, Copy } from 'lucide-react'
@@ -38,7 +38,7 @@ interface Audit {
   recommendations: string | null; summary: string | null; createdAt: string | Date
 }
 
-type Tab = 'quickwins' | 'audit' | 'recommendations' | 'cannibalization'
+type Tab = 'quickwins' | 'audit' | 'recommendations' | 'cannibalization' | 'errors'
 
 const icpBadge = (alignment: string | undefined) => {
   if (!alignment || alignment === 'unknown') return null
@@ -71,6 +71,27 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set())
   const [fixFilter, setFixFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [fixedPages, setFixedPages] = useState<Set<string>>(new Set())
+
+  // Load fixed pages from DB on mount
+  useEffect(() => {
+    fetch(`/api/page-audit/fix-status?brandId=${brand.id}`).then(r => r.json()).then(d => {
+      if (d.fixedPages) setFixedPages(new Set(d.fixedPages))
+    }).catch(() => {})
+  }, [brand.id])
+
+  async function togglePageFixed(url: string) {
+    setFixedPages((prev) => {
+      const next = new Set(prev)
+      if (next.has(url)) next.delete(url); else next.add(url)
+      return next
+    })
+    await fetch('/api/page-audit/fix-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandId: brand.id, url }),
+    })
+  }
 
   // Use audit data if available, otherwise server-calculated quick wins
   const auditQuickWins: QuickWin[] = latestAudit?.quickWins ? JSON.parse(latestAudit.quickWins) : []
@@ -80,6 +101,8 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
   const cannibalizationFixes = allFixesRaw.filter((f) => f.type === 'cannibalization')
   const allFixes = allFixesRaw.filter((f) => f.type !== 'cannibalization')
   const summary = latestAudit?.summary ?? null
+  const errorPages = auditData.filter((p: any) => p.statusCode && p.statusCode >= 400)
+  const redirectPages = auditData.filter((p: any) => p.statusCode && (p.statusCode === 301 || p.statusCode === 302))
   const hasAudit = latestAudit?.status === 'completed' && auditData.length > 0
 
   const togglePage = (url: string) => {
@@ -101,9 +124,9 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
     )
   }
 
-  async function handleRun() {
+  async function handleRun(mode: 'traffic' | 'sitemap' = 'traffic') {
     setLoading(true)
-    const res = await fetch('/api/page-audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId: brand.id }) })
+    const res = await fetch('/api/page-audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId: brand.id, mode }) })
     const data = await res.json()
     if (data.error) { alert(data.error); setLoading(false); return }
     setRunningId(data.auditId)
@@ -133,10 +156,18 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
           <p className="text-sm text-muted-foreground">Page-level SEO audit with specialized AI agents</p>
           {hasAudit && <p className="text-[10px] text-muted-foreground mt-0.5">Last audit: {new Date(latestAudit!.createdAt).toLocaleDateString()} &middot; 5 agents analyzed all pages in parallel</p>}
         </div>
-        <button onClick={handleRun} disabled={loading || !!runningId}
-          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-brand/90 disabled:opacity-50">
-          <Search className="h-4 w-4" />{loading ? 'Starting...' : hasAudit ? 'Re-run Audit' : 'Run Page Audit'}
-        </button>
+        <div className="flex items-center gap-2">
+          {hasAudit && (
+            <button onClick={() => handleRun('sitemap')} disabled={loading || !!runningId}
+              className="flex items-center gap-2 rounded-lg border border-brand/30 px-3 py-2 text-sm font-medium text-brand hover:bg-brand/10 disabled:opacity-50">
+              <FileText className="h-4 w-4" />Audit Next 25 Pages
+            </button>
+          )}
+          <button onClick={() => handleRun('traffic')} disabled={loading || !!runningId}
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-brand/90 disabled:opacity-50">
+            <Search className="h-4 w-4" />{loading ? 'Starting...' : hasAudit ? 'Re-run Audit' : 'Audit Pages with Traffic'}
+          </button>
+        </div>
       </div>
 
       {runningId && <div className="mb-6"><AnalysisProgress pipelineId={runningId} type="page-audit" onComplete={() => { setRunningId(null); router.refresh() }} /></div>}
@@ -176,6 +207,11 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
         {cannibalizationFixes.length > 0 && (
           <button onClick={() => setTab('cannibalization')} className={`flex items-center gap-1.5 px-3 py-1.5 font-medium ${tab === 'cannibalization' ? 'bg-red-500 text-white' : 'hover:bg-surface-2'}`}>
             <Copy className="h-3 w-3" />Cannibalization ({cannibalizationFixes.length})
+          </button>
+        )}
+        {errorPages.length > 0 && (
+          <button onClick={() => setTab('errors')} className={`flex items-center gap-1.5 px-3 py-1.5 font-medium ${tab === 'errors' ? 'bg-red-500 text-white' : 'hover:bg-surface-2'}`}>
+            <AlertTriangle className="h-3 w-3" />Errors ({errorPages.length})
           </button>
         )}
       </div>
@@ -301,21 +337,29 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
 
                 return (
                   <div key={page.url} className="rounded-lg border border-border bg-card overflow-hidden">
-                    <button onClick={() => togglePage(page.url)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-2/50 text-left">
-                      {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">{path}</span>
-                        {icpBadge(page.icpAlignment)}
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {issues.length > 0 ? (
-                          <span className="flex items-center gap-1 rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
-                            <AlertTriangle className="h-3 w-3" />{issues.length}
-                          </span>
-                        ) : <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-medium text-green-300">OK</span>}
-                        <span className="text-[10px] text-muted-foreground">{page.wordCount}w</span>
-                      </div>
-                    </button>
+                    <div className="flex items-center">
+                      <button onClick={(e) => { e.stopPropagation(); togglePageFixed(page.url) }}
+                        className={`flex-shrink-0 w-8 flex items-center justify-center py-2.5 ${fixedPages.has(page.url) ? 'text-green-400' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
+                        title={fixedPages.has(page.url) ? 'Fixes applied — click to unmark' : 'Mark as fixes applied'}>
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => togglePage(page.url)} className={`flex-1 flex items-center gap-3 px-3 py-2.5 hover:bg-surface-2/50 text-left ${fixedPages.has(page.url) ? 'opacity-50' : ''}`}>
+                        {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{path}</span>
+                          {icpBadge(page.icpAlignment)}
+                          {fixedPages.has(page.url) && <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[9px] text-green-300">Fixed</span>}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {issues.length > 0 ? (
+                            <span className="flex items-center gap-1 rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+                              <AlertTriangle className="h-3 w-3" />{issues.length}
+                            </span>
+                          ) : <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-medium text-green-300">OK</span>}
+                          <span className="text-[10px] text-muted-foreground">{page.wordCount}w</span>
+                        </div>
+                      </button>
+                    </div>
                     {isOpen && (
                       <div className="border-t border-border px-4 py-3 text-xs space-y-2">
                         <div className="grid grid-cols-2 gap-4">
@@ -396,6 +440,41 @@ export function OptimizeClient({ brand, hasDiagnostic, latestAudit, quickWins: s
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ═══ Cannibalization ═══ */}
+      {/* ═══ Errors (404, 500, etc.) ═══ */}
+      {tab === 'errors' && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Pages returning error status codes. 404 pages lose link equity and hurt user experience. Create 301 redirects to relevant pages or restore the content.
+          </p>
+          <div className="space-y-1">
+            {errorPages.map((page: any, i: number) => {
+              const path = page.url.replace(`https://${brand.domain}`, '') || page.url
+              const isFixed = fixedPages.has(page.url)
+              return (
+                <div key={i} className={`flex items-center rounded-lg border border-red-500/20 bg-card overflow-hidden ${isFixed ? 'opacity-50' : ''}`}>
+                  <button onClick={() => togglePageFixed(page.url)}
+                    className={`flex-shrink-0 w-8 flex items-center justify-center py-3 ${isFixed ? 'text-green-400' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}>
+                    <CheckCircle2 className="h-4 w-4" />
+                  </button>
+                  <div className="flex-1 flex items-center justify-between px-3 py-2.5">
+                    <div>
+                      <div className="text-sm font-medium">{path}</div>
+                      {isFixed && <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[9px] text-green-300">Redirect created</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300">{page.statusCode}</span>
+                      <span className="text-[10px] text-muted-foreground">Create 301 redirect to relevant page</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {errorPages.length === 0 && <div className="text-center py-8 text-sm text-muted-foreground">No error pages detected</div>}
         </div>
       )}
 

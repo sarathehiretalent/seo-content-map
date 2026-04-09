@@ -5,11 +5,13 @@ import { runAllOptimizeAgents } from '@/lib/agents/optimize-agents'
 import { classifyKeywordsByIcp } from '@/lib/agents/icp-alignment'
 
 export async function POST(request: NextRequest) {
-  const { brandId } = await request.json()
+  const { brandId, mode } = await request.json()
+  // mode: 'traffic' (default) = pages with GSC data only
+  // mode: 'sitemap' = next 25 pages from sitemap not yet audited
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } })
 
   const kwCount = await prisma.keyword.count({ where: { brandId } })
-  if (kwCount === 0) {
+  if (mode !== 'sitemap' && kwCount === 0) {
     return NextResponse.json({ error: 'Run diagnostic first' }, { status: 400 })
   }
 
@@ -17,14 +19,14 @@ export async function POST(request: NextRequest) {
     data: { brandId, status: 'pending' },
   })
 
-  runPageAuditPipeline(brandId, audit.id).catch((err) => {
+  runPageAuditPipeline(brandId, audit.id, mode ?? 'traffic').catch((err) => {
     console.error('[PageAudit] Failed:', err)
   })
 
   return NextResponse.json({ auditId: audit.id })
 }
 
-async function runPageAuditPipeline(brandId: string, auditId: string) {
+async function runPageAuditPipeline(brandId: string, auditId: string, mode: string = 'traffic') {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } })
   const log: Array<{ step: string; status: string; startedAt?: string; completedAt?: string; resultCount?: number; error?: string }> = [
     { step: 'Scraping pages (meta, schema, links)', status: 'pending' },
@@ -45,13 +47,43 @@ async function runPageAuditPipeline(brandId: string, auditId: string) {
     log[0].startedAt = new Date().toISOString()
     await update('running')
 
-    const pages = await prisma.keyword.findMany({
-      where: { brandId, pageUrl: { not: null } },
-      distinct: ['pageUrl'],
-      select: { pageUrl: true },
-    })
-    const urls = pages.map((p) => p.pageUrl!).filter(Boolean)
-    console.log(`[PageAudit] Scraping ${urls.length} pages...`)
+    let urls: string[] = []
+
+    if (mode === 'traffic') {
+      // Only pages with GSC data (have traffic)
+      const gscPages = await prisma.keyword.findMany({
+        where: { brandId, pageUrl: { not: null } },
+        distinct: ['pageUrl'],
+        select: { pageUrl: true },
+      })
+      urls = gscPages.map((p) => p.pageUrl!).filter(Boolean)
+      console.log(`[PageAudit] Mode: traffic — ${urls.length} pages with GSC data`)
+    } else {
+      // Sitemap mode: get next 25 pages NOT already audited
+      let sitemapUrls: string[] = []
+      try {
+        const { fetchSitemapUrls } = await import('@/lib/services/sitemap')
+        sitemapUrls = await fetchSitemapUrls(brand.domain)
+      } catch (e) {
+        console.log(`[PageAudit] Sitemap fetch failed:`, e instanceof Error ? e.message : e)
+      }
+
+      // Get already audited URLs from previous audits
+      const previousAudits = await prisma.pageAudit.findMany({
+        where: { brandId, status: 'completed' },
+        select: { auditData: true },
+      })
+      const auditedUrls = new Set<string>()
+      for (const prev of previousAudits) {
+        if (!prev.auditData) continue
+        const pages = JSON.parse(prev.auditData)
+        pages.forEach((p: any) => { if (p.url) auditedUrls.add(p.url) })
+      }
+
+      // Filter out already audited, take next 25
+      urls = sitemapUrls.filter((u) => !auditedUrls.has(u)).slice(0, 25)
+      console.log(`[PageAudit] Mode: sitemap — ${urls.length} new pages (${auditedUrls.size} already audited, ${sitemapUrls.length} total in sitemap)`)
+    }
 
     const auditData = await auditPages(urls, brand.domain)
 
@@ -111,9 +143,14 @@ async function runPageAuditPipeline(brandId: string, auditId: string) {
     const diagnostic = await prisma.diagnostic.findFirst({
       where: { brandId, status: 'completed' },
       orderBy: { createdAt: 'desc' },
-      select: { cannibalization: true },
+      select: { cannibalization: true, currentStructure: true },
     })
     const cannibalization: Array<{ keyword: string; pages: string[]; recommendation: string }> = diagnostic?.cannibalization ? JSON.parse(diagnostic.cannibalization) : []
+
+    // Get orphan pages from Structure Analysis
+    const structureData = diagnostic?.currentStructure ? JSON.parse(diagnostic.currentStructure) : null
+    const orphanPages: string[] = structureData?.orphanPages?.map((p: any) => p.path ?? p.url ?? p) ?? []
+    console.log(`[PageAudit] Orphan pages from structure: ${orphanPages.length}`)
     const paaMap: Record<string, string[]> = {}
     if (serpAnalysis?.serpPerformance) {
       const perf = JSON.parse(serpAnalysis.serpPerformance)
@@ -125,7 +162,7 @@ async function runPageAuditPipeline(brandId: string, auditId: string) {
       }
     }
 
-    const { fixes, summary } = await runAllOptimizeAgents(auditData, brand.domain, brand.name, pageKeywordMap, paaMap, cannibalization)
+    const { fixes, summary } = await runAllOptimizeAgents(auditData, brand.domain, brand.name, pageKeywordMap, paaMap, cannibalization, orphanPages)
 
     log[2].status = 'completed'
     log[2].completedAt = new Date().toISOString()

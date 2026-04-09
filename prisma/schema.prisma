@@ -123,6 +123,7 @@ model PageAudit {
   auditData       String?  // JSON: PageAuditData[]
   quickWins       String?  // JSON: QuickWin[]
   recommendations String?  // JSON: Recommendation[]
+  fixedPages      String   @default("[]") // JSON: string[] of URLs marked as fixed
   summary         String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

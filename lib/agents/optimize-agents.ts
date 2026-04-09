@@ -71,12 +71,25 @@ async function batchedAgent(
 
 // ═══ Title Agent ═══
 async function runTitleAgent(pages: PageContext[], brandName: string): Promise<PageFix[]> {
-  const withIssues = pages.filter((p) => p.titleLength === 0 || p.titleLength > 60 || (p.primaryKeyword && !p.title.toLowerCase().includes(p.primaryKeyword.split(' ')[0].toLowerCase())))
+  const withIssues = pages.filter((p) => p.titleLength === 0 || p.titleLength > 60 || p.titleLength < 30 || (p.primaryKeyword && !p.title.toLowerCase().includes(p.primaryKeyword.split(' ')[0].toLowerCase())))
   if (withIssues.length === 0) return []
   console.log(`[TitleAgent] ${withIssues.length} pages`)
   return batchedAgent(withIssues,
-    `You optimize title tags. 50-60 chars, keyword near start, compelling. Brand: ${brandName}. JSON only.`,
-    (batch) => `Fix titles:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, current: p.title, len: p.titleLength })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "title", "issue": "problem", "current": "old", "suggested": "new title", "reason": "why", "priority": "high|medium|low" }] }\nGenerate fix for EVERY page listed.`,
+    `You are an SEO expert optimizing title tags to maximize click-through rate from search results.
+
+IMPORTANT: The "keyword" provided is from Google Search Console — it may NOT match the page's actual topic. Always check the H1 and current title to understand what the page is really about. If the GSC keyword doesn't match the page content, optimize for the page's actual topic instead.
+
+Rules:
+- 50-60 characters (Google truncates at ~60)
+- Primary keyword near the start (first 3 words if possible)
+- Include a compelling hook: number, year, power word, or benefit
+- Differentiate from generic competitor titles
+- Match search intent: informational → "Guide/How to", commercial → "Best/Top/Review", transactional → "Buy/Get/Try"
+- Do NOT stuff keywords — it must read naturally
+- If the current title is already good (correct length, has keyword, compelling), skip it
+
+Brand: ${brandName}. JSON only.`,
+    (batch) => `Fix titles:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, current: p.title, len: p.titleLength, impressions: p.impressions })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "title", "issue": "specific problem", "current": "current title", "suggested": "new title (50-60 chars)", "reason": "why this improves CTR", "priority": "high|medium|low" }] }\nPriority: high if >100 impressions, medium if >20, low otherwise. Only generate fixes for pages that NEED changes.`,
     'title')
 }
 
@@ -86,47 +99,83 @@ async function runMetaAgent(pages: PageContext[], brandName: string): Promise<Pa
   if (withIssues.length === 0) return []
   console.log(`[MetaAgent] ${withIssues.length} pages`)
   return batchedAgent(withIssues,
-    `You optimize meta descriptions. 150-160 chars, keyword included, CTA at end. Brand: ${brandName}. JSON only.`,
-    (batch) => `Fix meta descriptions:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, current: p.metaDescription.substring(0, 160), len: p.metaDescriptionLength })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "meta_description", "issue": "problem", "current": "old", "suggested": "new meta", "reason": "why", "priority": "high|medium|low" }] }\nGenerate fix for EVERY page.`,
+    `You are an SEO expert writing meta descriptions that maximize click-through rate.
+
+IMPORTANT: The "keyword" provided is from Google Search Console — it may NOT match the page's actual topic. Always check the H1 and current title to understand what the page is really about. Optimize for the page's actual topic.
+
+Rules:
+- 150-160 characters (Google truncates at ~160)
+- Include the primary keyword naturally in the first sentence
+- End with a clear CTA or value proposition (Learn how, Discover, Get started, Compare)
+- Address the searcher's intent: answer their question partially to entice the click
+- Include a differentiator: data point, year, unique angle
+- Do NOT write generic descriptions like "Learn more about X" — be specific
+- If the current meta is already good, skip it
+
+Brand: ${brandName}. JSON only.`,
+    (batch) => `Fix meta descriptions:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, title: p.title, current: p.metaDescription.substring(0, 160), len: p.metaDescriptionLength, impressions: p.impressions })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "meta_description", "issue": "specific problem", "current": "current meta", "suggested": "new meta (150-160 chars)", "reason": "why this improves CTR", "priority": "high|medium|low" }] }\nPriority based on impressions. Only fix pages that need changes.`,
     'meta_description')
 }
 
 // ═══ Schema Agent ═══
 async function runSchemaAgent(pages: PageContext[], brandName: string): Promise<PageFix[]> {
-  const withIssues = pages.filter((p) => !p.hasSchema)
+  // Analyze ALL pages — even those with schema may need additional types (e.g., has Organization but needs FAQPage)
+  const withIssues = pages
   if (withIssues.length === 0) return []
-  console.log(`[SchemaAgent] ${withIssues.length} pages`)
+  console.log(`[SchemaAgent] ${withIssues.length} pages (including ${pages.filter(p => p.hasSchema).length} with existing schema)`)
   return batchedAgent(withIssues,
     `You recommend schema markup for SEO and Answer Engine Optimization (AEO).
 Types: Article (blog posts), FAQPage (pages with questions — CRITICAL for AI citation), Organization (about/home), Service (service pages), WebPage (general).
-IMPORTANT: If a page has PAA (People Also Ask) questions, ALWAYS recommend FAQPage schema with those exact questions. This increases AI citation probability by 40-60%.
+IMPORTANT:
+- If a page ALREADY has the correct schema type, do NOT generate a fix for it — it's fine.
+- If a page has schema but is MISSING an additional recommended type (e.g., has Organization but should also have FAQPage), recommend adding the missing type.
+- If a page has NO schema, recommend the most appropriate type.
+- If a page has PAA questions, ALWAYS recommend FAQPage schema.
 Brand: ${brandName}. JSON only.`,
-    (batch) => `Add schema to:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, h2Count: p.h2s.length, words: p.wordCount, paaQuestions: p.paaQuestions.length > 0 ? p.paaQuestions : undefined })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "schema", "issue": "No structured data", "current": "None", "suggested": "Add [Type] schema with [details]. If PAA questions exist, include FAQPage schema.", "reason": "why — mention AEO/AI citation benefit if FAQPage", "priority": "high|medium|low" }] }\nGenerate fix for EVERY page.`,
+    (batch) => `Review schema for:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, h2Count: p.h2s.length, words: p.wordCount, existingSchemas: p.schemas, paaQuestions: p.paaQuestions.length > 0 ? p.paaQuestions : undefined })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "schema", "issue": "description of what's missing", "current": "existing schemas or None", "suggested": "Add [Type] schema with [details]", "reason": "why", "priority": "high|medium|low" }] }\nONLY generate fixes for pages that NEED changes. Skip pages where schema is already correct.`,
     'schema')
 }
 
 // ═══ Content Agent ═══
 async function runContentAgent(pages: PageContext[], brandName: string): Promise<PageFix[]> {
-  const withIssues = pages.filter((p) => p.wordCount < 800 || p.h1Count !== 1 || p.h2s.length < 2)
+  const withIssues = pages.filter((p) => p.wordCount < 1200 || p.h1Count !== 1 || p.h2s.length < 3 || (p.paaQuestions.length > 0 && !p.h2s.some((h: string) => h.includes('?'))))
   if (withIssues.length === 0) return []
   console.log(`[ContentAgent] ${withIssues.length} pages`)
   return batchedAgent(withIssues,
-    `You optimize content structure for SEO and Answer Engine Optimization (AEO).
-Check: H1 keyword alignment, H2 subtopics, content depth, FAQ sections.
-IMPORTANT for AEO: If a page has PAA questions, recommend adding a FAQ section with those exact questions answered in 30-50 words each. Format H2s as questions when possible — AI engines extract question-format headings more easily.
+    `You are an SEO content expert optimizing pages for rankings AND AI engine citability (AEO).
+
+Check these in order of impact:
+1. H1: Must contain primary keyword, only 1 H1 per page
+2. Content depth: Blog posts need 1,500+ words for competitive keywords. Service pages need 800+
+3. H2 structure: At least 3-5 H2s covering subtopics. Format as questions when possible (AI engines prefer question headings)
+4. FAQ section: If PAA (People Also Ask) questions exist, add a FAQ section with those EXACT questions answered in 40-60 words each
+5. Internal links: Reference related pages with keyword-rich anchor text
+6. Data points: Include statistics, numbers, or cited data every 200-300 words for AI citability
+
+IMPORTANT: Do NOT recommend changes to pages that are already well-optimized. Only flag real issues that would impact rankings.
 Brand: ${brandName}. JSON only.`,
-    (batch) => `Fix content:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, h1Count: p.h1Count, h2s: p.h2s.slice(0, 5), words: p.wordCount, paaQuestions: p.paaQuestions.length > 0 ? p.paaQuestions : undefined })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "content", "issue": "problem", "current": "state", "suggested": "fix — include specific FAQ questions to add if PAA data exists", "reason": "why — mention AEO benefit if adding FAQ", "priority": "high|medium|low" }] }\nGenerate fix for EVERY page.`,
-    'content')
+    (batch) => `Analyze content:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, h1: p.h1, h1Count: p.h1Count, h2s: p.h2s.slice(0, 8), words: p.wordCount, impressions: p.impressions, paaQuestions: p.paaQuestions.length > 0 ? p.paaQuestions : undefined })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "content", "issue": "specific problem found", "current": "what the page has now", "suggested": "specific actionable fix with examples", "reason": "expected SEO/AEO impact", "priority": "high|medium|low" }] }\nPriority: high if keyword has >100 impressions, medium if >20. Only generate fixes for pages with real issues.`,
+    'content', 10)
 }
 
 // ═══ Links & Images Agent ═══
-async function runLinksAgent(pages: PageContext[], brandName: string): Promise<PageFix[]> {
-  const withIssues = pages.filter((p) => p.internalLinks < 3 || p.imagesWithoutAlt > 0 || !p.hasCanonical)
+async function runLinksAgent(pages: PageContext[], brandName: string, orphanPages: string[] = []): Promise<PageFix[]> {
+  const orphanSet = new Set(orphanPages.map(p => p.toLowerCase()))
+  const withIssues = pages.filter((p) => p.internalLinks < 5 || p.imagesWithoutAlt > 0 || !p.hasCanonical || orphanSet.has(p.path.toLowerCase()))
   if (withIssues.length === 0) return []
   console.log(`[LinksAgent] ${withIssues.length} pages`)
   return batchedAgent(withIssues,
-    `You fix technical on-page SEO: internal links, image alt text, canonical tags. Brand: ${brandName}. JSON only.`,
-    (batch) => `Fix technical issues:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, links: p.internalLinks, noAlt: p.imagesWithoutAlt, canonical: p.hasCanonical })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "internal_links|images|canonical", "issue": "problem", "current": "state", "suggested": "fix", "reason": "why", "priority": "high|medium|low" }] }\nGenerate fix for EVERY page with issues.`,
+    `You are an SEO expert fixing technical on-page issues that affect crawlability and rankings.
+
+Check:
+1. Internal links: Pages need 5+ internal links to related pages. Anchor text should include relevant keywords, not "click here"
+2. Image alt text: Every image needs descriptive alt text with the page's keyword when relevant. Missing alt = missed ranking opportunity in image search
+3. Canonical tags: Every page needs a canonical URL pointing to itself to prevent duplicate content issues
+4. Orphan pages: Pages marked as "orphan" have NO internal links pointing to them from other pages — they are invisible to Google. Recommend specific pages that should link to them.
+
+Only flag issues that actually exist. Do NOT generate fixes for pages that are already correct.
+Brand: ${brandName}. JSON only.`,
+    (batch) => `Fix technical issues:\n${JSON.stringify(batch.map((p) => ({ path: p.path, keyword: p.primaryKeyword, internalLinks: p.internalLinks, imagesWithoutAlt: p.imagesWithoutAlt, hasCanonical: p.hasCanonical, impressions: p.impressions, isOrphan: orphanSet.has(p.path.toLowerCase()) })), null, 2)}\n\nReturn: { "fixes": [{ "url": "path", "type": "internal_links|images|canonical", "issue": "specific problem", "current": "current state", "suggested": "specific fix — for orphan pages, suggest which pages should link to this one", "reason": "SEO impact", "priority": "high|medium|low" }] }\nOrphan pages are always HIGH priority. Only generate fixes for pages with real issues.`,
     'internal_links')
 }
 
@@ -179,8 +228,14 @@ export async function runAllOptimizeAgents(
   keywordMap: Record<string, { keyword: string; impressions: number }>,
   paaMap: Record<string, string[]> = {},
   cannibalization: Array<{ keyword: string; pages: string[]; recommendation: string }> = [],
+  orphanPages: string[] = [],
 ): Promise<{ fixes: PageFix[]; summary: string }> {
-  const pages = auditData.map((a) => buildPageContext(a, domain, keywordMap, paaMap))
+  // Filter out 404 and error pages
+  const validAuditData = auditData.filter((a) => !a.statusCode || a.statusCode === 200 || a.statusCode === 301 || a.statusCode === 302)
+  const skipped = auditData.length - validAuditData.length
+  if (skipped > 0) console.log(`[OptimizeAgents] Skipped ${skipped} error pages (404, 500, etc.)`)
+
+  const pages = validAuditData.map((a) => buildPageContext(a, domain, keywordMap, paaMap))
   console.log(`[OptimizeAgents] Running 6 agents for ${pages.length} pages...`)
 
   const [titleFixes, metaFixes, schemaFixes, contentFixes, linksFixes, cannibalFixes] = await Promise.all([
@@ -188,7 +243,7 @@ export async function runAllOptimizeAgents(
     runMetaAgent(pages, brandName).catch(() => [] as PageFix[]),
     runSchemaAgent(pages, brandName).catch(() => [] as PageFix[]),
     runContentAgent(pages, brandName).catch(() => [] as PageFix[]),
-    runLinksAgent(pages, brandName).catch(() => [] as PageFix[]),
+    runLinksAgent(pages, brandName, orphanPages).catch(() => [] as PageFix[]),
     runCannibalizationAgent(cannibalization, pages, brandName).catch(() => [] as PageFix[]),
   ])
 

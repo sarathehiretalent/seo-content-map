@@ -84,9 +84,13 @@ export async function auditPage(url: string, domain: string): Promise<PageAuditD
     for (const m of schemaMatches) {
       try {
         const data = JSON.parse(m[1])
-        const type = data['@type']
-        if (Array.isArray(type)) schemas.push(...type)
-        else if (type) schemas.push(type)
+        // Handle @graph arrays (Rank Math, Yoast, etc.)
+        const items = data['@graph'] ? data['@graph'] : [data]
+        for (const item of items) {
+          const type = item['@type']
+          if (Array.isArray(type)) schemas.push(...type)
+          else if (type) schemas.push(type)
+        }
       } catch { /* invalid JSON-LD */ }
     }
 
